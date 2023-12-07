@@ -3,7 +3,13 @@ package main
 import (
     "flag"
     "fmt"
+    "io/ioutil"
     "os"
+    "path/filepath"
+
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    "github.com/openshift/client-go/operator/clientset/versioned"
+    "sigs.k8s.io/yaml"
 )
 
 func main() {
@@ -17,14 +23,12 @@ func main() {
     var err error
 
     if *tokenFlag != "" {
-        // Token is provided; use token-based authentication
         if *serverFlag == "" {
             fmt.Println("Error: --server flag must be set when using --token")
             os.Exit(1)
         }
         clientset, err = createClientsetWithToken(*serverFlag, *tokenFlag)
     } else {
-        // No token provided; use kubeconfig for authentication
         clientset, err = createClientsetWithKubeconfig()
     }
 
@@ -33,5 +37,26 @@ func main() {
         os.Exit(1)
     }
 
-    // Rest of your code to handle ImageContentSourcePolicies...
+    // Fetch existing policies
+    policies, err := getExistingPolicies(clientset)
+    if err != nil {
+        fmt.Printf("Error retrieving policies: %v\n", err)
+        os.Exit(1)
+    }
+
+    // Write each policy to a separate file
+    for _, policy := range policies.Items {
+        fileName := filepath.Join("./src", fmt.Sprintf("%s.yaml", policy.Name))
+        policyYAML, err := yaml.Marshal(policy)
+        if err != nil {
+            fmt.Printf("Error marshalling policy %s: %v\n", policy.Name, err)
+            continue
+        }
+        err = ioutil.WriteFile(fileName, policyYAML, 0644)
+        if err != nil {
+            fmt.Printf("Error writing policy %s to file: %v\n", policy.Name, err)
+            continue
+        }
+        fmt.Printf("Policy %s successfully written to %s\n", policy.Name, fileName)
+    }
 }
